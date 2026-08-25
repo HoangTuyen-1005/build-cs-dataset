@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+
+# Dataset and Audio temporary folders
+seg_temp/
+input/*
+!input/.gitkeep
+cs_dataset/train/
+cs_dataset/val/
+cs_dataset/test/
+cs_dataset/metadata.csv
+cs_dataset/seg_temp/
+
+# Pretrained models cache
+FireRedVAD/
+
+# Environment Variables
+.env
+!.env.example
+
+# IDE
+.vscode/
+.idea/

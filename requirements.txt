@@ -1,0 +1,14 @@
+ --extra-index-url https://download.pytorch.org/whl/cu126
+
+# Core Audio & AI Libraries
+pydub>=0.25.1
+faster-whisper>=1.0.0
+fireredvad>=0.0.2
+huggingface_hub>=0.20.0
+soundfile>=0.12.1
+torch>=2.0.0
+
+# Pipeline Utilities
+python-dotenv>=1.0.0
+pandas>=2.0.0
+tqdm>=4.65.0
