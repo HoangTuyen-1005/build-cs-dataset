@@ -99,6 +99,19 @@ Sử dụng lệnh `python main.py` và truyền 2 tham số bắt buộc:
 python main.py --type "cs" --speaker_id "speaker_001"
 ```
 
+### Sửa transcript thủ công trên máy
+
+Chạy app review cục bộ (không cần tài khoản và không cần cài package mới):
+
+```powershell
+python review_app.py
+```
+
+Mở `http://127.0.0.1:8765`. App đọc `cs_dataset/metadata.csv`, phát file tại
+`audio_path`, và ghi trực tiếp phần text đã sửa lại vào CSV khi bấm **Lưu thay đổi**.
+Có thanh chỉnh tốc độ từ 0.5× đến 2×, thanh chọn bước tua 1–5 giây, `Space` để
+phát/dừng, phím mũi tên để tua theo bước đã chọn, và `Ctrl+S` để lưu.
+
 ---
 
 ## 📊 Định Dạng Metadata (`metadata.csv`)
