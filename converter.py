@@ -20,7 +20,6 @@ def convert_to_standard_format(input_path: str, output_path: str, sample_rate: i
     audio = audio.set_frame_rate(sample_rate)
     audio = audio.set_channels(1)
     audio = audio.set_sample_width(2)  # 16-bit PCM = 2 bytes
-
     audio.export(output_path, format="wav")
     return output_path
 

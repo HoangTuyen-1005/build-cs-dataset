@@ -19,6 +19,8 @@ cs_dataset/test/
 cs_dataset/metadata.csv
 cs_dataset/seg_temp/
 
+link/*
+!link/.gitkeep
 # Pretrained models cache
 FireRedVAD/
 

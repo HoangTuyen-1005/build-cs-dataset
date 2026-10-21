@@ -3,7 +3,8 @@ import glob
 import uuid
 import csv
 import argparse
-from typing import List, Dict, Any
+import re
+from typing import List, Dict, Any, Optional, Set
 from dotenv import load_dotenv
 from tqdm import tqdm
 
@@ -20,9 +21,21 @@ class DatasetBuilderPipeline:
     merge segments into ~30s chunks, transcribe using Whisper, and generate metadata.csv.
     """
 
-    def __init__(self, data_type: str, speaker_id: str):
+    def __init__(
+        self,
+        data_type: str,
+        speaker_id: str = "auto",
+        num_rooms: Optional[int] = None,
+        rooms: Optional[str] = None,
+        meta_file_for_rooms: Optional[str] = None,
+    ):
         self.data_type = data_type
         self.speaker_id = speaker_id
+        self.num_rooms = num_rooms
+        self.rooms = rooms
+        self.meta_file_for_rooms = meta_file_for_rooms or os.getenv(
+            "ROOM_META_FILE", "link/tracks_2026-10-12_2026-10-16.csv"
+        )
 
         # Load directory paths and configurations from .env
         self.input_dir = os.getenv("INPUT_DIR", "input")
@@ -65,12 +78,75 @@ class DatasetBuilderPipeline:
                 record["speaker_id"],
             ])
 
+    def _resolve_speaker_id(self, file_path: str) -> str:
+        """Resolves the speaker_id either from user CLI or auto-detected from folder or filename."""
+        if self.speaker_id and self.speaker_id.lower() != "auto":
+            return self.speaker_id
+        # Check immediate parent folder (e.g. input/{room_id}/{user_id}/file.ogg)
+        parent = os.path.basename(os.path.dirname(file_path))
+        if re.match(r"^\d{15,22}$", parent):
+            return parent
+        filename = os.path.basename(file_path)
+        m = re.search(r"_(\d{15,22})-mic-audio", filename)
+        if m:
+            return m.group(1)
+        m2 = re.search(r"(\d{15,22})", filename)
+        if m2:
+            return m2.group(1)
+        return "speaker_001"
+
+    def _resolve_room_id(self, file_path: str) -> str:
+        """Resolves the room_id from input directory structure or filename."""
+        rel = os.path.relpath(file_path, self.input_dir).replace("\\", "/")
+        parts = rel.split("/")
+        if len(parts) >= 2:
+            return parts[0]
+        filename = os.path.basename(file_path)
+        m = re.match(r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", filename)
+        if m:
+            return m.group(1)
+        return "default_room"
+
+    def _get_target_rooms(self) -> Optional[Set[str]]:
+        """
+        Resolves the set of room_ids to filter by, based on --rooms or --num_rooms.
+        """
+        if self.rooms:
+            rooms_list = [r.strip() for r in self.rooms.split(",") if r.strip()]
+            return set(rooms_list)
+
+        if self.num_rooms is not None and self.num_rooms > 0:
+            if os.path.exists(self.meta_file_for_rooms):
+                unique_rooms = []
+                with open(self.meta_file_for_rooms, mode="r", encoding="utf-8-sig") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        rid = row.get("room_id", "").strip()
+                        if rid and rid not in unique_rooms:
+                            unique_rooms.append(rid)
+                selected = unique_rooms[: self.num_rooms]
+                print(f"[Pipeline] Selected first {len(selected)} room(s) from '{self.meta_file_for_rooms}'.")
+                return set(selected)
+            else:
+                # Fallback: inspect subdirectories inside input_dir
+                subdirs = [
+                    d for d in os.listdir(self.input_dir)
+                    if os.path.isdir(os.path.join(self.input_dir, d))
+                ]
+                selected = subdirs[: self.num_rooms]
+                print(f"[Pipeline] Selected first {len(selected)} room directory(ies) from '{self.input_dir}'.")
+                return set(selected)
+
+        return None
+
     def process_single_file(self, file_path: str):
         """
         Processes a single input audio file through the full pipeline.
         """
         file_basename = os.path.splitext(os.path.basename(file_path))[0]
-        print(f"\n[Pipeline] Processing: {os.path.basename(file_path)}")
+        current_speaker = self._resolve_speaker_id(file_path)
+        current_room = self._resolve_room_id(file_path)
+        print(f"\n[Pipeline] Processing: {os.path.basename(file_path)} (Room: {current_room}, Speaker: {current_speaker})")
 
         # Step 1: Standardize Audio to 16kHz Mono 16-bit WAV
         std_wav_path = os.path.join(self.temp_seg_dir, f"{file_basename}_std.wav")
@@ -92,14 +168,17 @@ class DatasetBuilderPipeline:
             slice_audio(std_wav_path, start_sec, end_sec, seg_path)
             raw_seg_paths.append(seg_path)
 
-        # Step 4: Merge raw segments into chunks approaching ~30s duration
+        # Step 4: Merge raw segments into chunks approaching ~30s duration in cs_dataset/train/{room_id}/{speaker_id}/
+        target_chunk_dir = os.path.join(self.train_dir, current_room, current_speaker)
+        os.makedirs(target_chunk_dir, exist_ok=True)
+
         merged_chunks = merge_and_save_chunks(
             segment_paths=raw_seg_paths,
             max_duration=self.max_chunk_duration,
             output_prefix=file_basename,
-            output_dir=self.train_dir
+            output_dir=target_chunk_dir,
         )
-        print(f" -> Created {len(merged_chunks)} merged chunks (<= {self.max_chunk_duration}s) in '{self.train_dir}'.")
+        print(f" -> Created {len(merged_chunks)} merged chunks (<= {self.max_chunk_duration}s) in '{target_chunk_dir}'.")
 
         # Step 5: Transcribe merged chunks and record metadata
         for chunk in merged_chunks:
@@ -119,7 +198,7 @@ class DatasetBuilderPipeline:
                 "text": transcribed_text,
                 "duration": duration,
                 "type": self.data_type,
-                "speaker_id": self.speaker_id,
+                "speaker_id": current_speaker,
             }
             self._append_metadata_record(record)
             print(f"   [+] {rel_audio_path} ({duration:.2f}s): \"{transcribed_text}\"")
@@ -129,14 +208,32 @@ class DatasetBuilderPipeline:
         supported_exts = ("*.wav", "*.mp3", "*.m4a", "*.flac", "*.ogg", "*.aac")
         audio_files: List[str] = []
         for ext in supported_exts:
-            audio_files.extend(glob.glob(os.path.join(self.input_dir, ext)))
+            # Recursively scan root and any room_id subdirectories
+            audio_files.extend(glob.glob(os.path.join(self.input_dir, "**", ext), recursive=True))
 
         if not audio_files:
             print(f"[Info] No audio files found in input directory: '{self.input_dir}'")
             print(f"Please place audio files (.wav, .mp3, .m4a, .flac) into '{self.input_dir}' and rerun.")
             return
 
-        print(f"Found {len(audio_files)} audio file(s) in '{self.input_dir}'. Starting pipeline...")
+        # Filter audio files by target rooms if specified
+        target_rooms = self._get_target_rooms()
+        if target_rooms:
+            filtered_files = []
+            for f in audio_files:
+                rel = os.path.relpath(f, self.input_dir).replace("\\", "/")
+                parent_dir = rel.split("/")[0] if "/" in rel else ""
+                base = os.path.basename(f)
+                if parent_dir in target_rooms or any(base.startswith(f"{rid}_") for rid in target_rooms):
+                    filtered_files.append(f)
+            audio_files = filtered_files
+            print(f"[Pipeline] Filtered to {len(audio_files)} audio file(s) across {len(target_rooms)} selected room(s).")
+
+        if not audio_files:
+            print(f"[Info] No audio files matching the selected room(s) in '{self.input_dir}'.")
+            return
+
+        print(f"Found {len(audio_files)} audio file(s) to process. Starting pipeline...")
         for file_path in tqdm(audio_files, desc="Building Dataset"):
             try:
                 self.process_single_file(file_path)
@@ -159,17 +256,120 @@ def parse_args():
     parser.add_argument(
         "--speaker_id",
         type=str,
-        required=True,
-        help="Unique identifier for the speaker (e.g., 'SPK01', 'Speaker_A')",
+        default="auto",
+        help="Speaker identifier (e.g., 'SPK01', or 'auto' to extract participant_id from filename)",
+    )
+    parser.add_argument(
+        "--num_rooms",
+        "--num-rooms",
+        type=int,
+        default=None,
+        help="Number of rooms to process from the CSV list (e.g. 5, 10)",
+    )
+    parser.add_argument(
+        "--rooms",
+        type=str,
+        default=None,
+        help="Comma-separated list of specific room_ids to process",
+    )
+    parser.add_argument(
+        "--meta",
+        type=str,
+        default="link/tracks_2026-10-12_2026-10-16.csv",
+        help="Path to CSV file containing room_id list (default: 'link/tracks_2026-10-12_2026-10-16.csv')",
+    )
+    parser.add_argument(
+        "--reorganize-dataset",
+        action="store_true",
+        help="Reorganize existing cs_dataset/train chunks into {room_id}/{user_id}/ folders and update metadata.csv",
     )
     return parser.parse_args()
 
 
+def reorganize_existing_dataset(output_dir: str = "cs_dataset") -> int:
+    """
+    Reorganizes existing audio files in cs_dataset/train/:
+    From: cs_dataset/train/{chunk_filename}.wav
+    To:   cs_dataset/train/{room_id}/{user_id}/{chunk_filename}.wav
+    And updates metadata.csv accordingly.
+    """
+    train_dir = os.path.join(output_dir, "train")
+    meta_path = os.path.join(output_dir, "metadata.csv")
+
+    if not os.path.exists(train_dir) or not os.path.exists(meta_path):
+        return 0
+
+    with open(meta_path, mode="r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+        rows = list(reader)
+
+    moved_count = 0
+    updated_rows = []
+
+    for row in rows:
+        old_rel = row.get("audio_path", "").strip().replace("\\", "/")
+        base_name = os.path.basename(old_rel)
+
+        # Check if already in 2-level structure (train/{room_id}/{user_id}/{base_name})
+        parts = old_rel.split("/")
+        if len(parts) >= 4 and parts[0] == "train":
+            updated_rows.append(row)
+            continue
+
+        # Extract room_id and user_id from chunk filename or row
+        m_room = re.search(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", base_name)
+        m_user = re.search(r"(\d{15,22})", base_name)
+
+        room_id = m_room.group(1) if m_room else "default_room"
+        user_id = m_user.group(1) if m_user else (row.get("speaker_id") or "unknown_speaker")
+
+        # Destination folder: cs_dataset/train/{room_id}/{user_id}
+        dest_folder = os.path.join(train_dir, room_id, user_id)
+        os.makedirs(dest_folder, exist_ok=True)
+
+        old_file = os.path.join(output_dir, old_rel)
+        new_file = os.path.join(dest_folder, base_name)
+
+        if os.path.exists(old_file) and not os.path.exists(new_file):
+            os.replace(old_file, new_file)
+            moved_count += 1
+        elif os.path.exists(old_file) and os.path.exists(new_file) and old_file != new_file:
+            os.remove(old_file)
+
+        new_rel = f"train/{room_id}/{user_id}/{base_name}"
+        row["audio_path"] = new_rel
+        updated_rows.append(row)
+
+    if moved_count > 0 or any(r["audio_path"] != old_r["audio_path"] for r, old_r in zip(updated_rows, rows)):
+        tmp_meta = meta_path + ".tmp"
+        with open(tmp_meta, mode="w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(updated_rows)
+        os.replace(tmp_meta, meta_path)
+
+    return moved_count
+
+
 def main():
     args = parse_args()
+
+    # Reorganize existing dataset if requested or to ensure consistency
+    if getattr(args, "reorganize_dataset", False):
+        count = reorganize_existing_dataset(os.getenv("OUTPUT_DIR", "cs_dataset"))
+        print(f"[Success] Reorganized {count} chunk file(s) into {{room_id}}/{{user_id}}/ and updated metadata.csv.")
+        return
+
+    # Automatically ensure existing files in cs_dataset/train are in {room_id}/{user_id}/ structure
+    reorganize_existing_dataset(os.getenv("OUTPUT_DIR", "cs_dataset"))
+
     pipeline = DatasetBuilderPipeline(
         data_type=args.type,
-        speaker_id=args.speaker_id
+        speaker_id=args.speaker_id,
+        num_rooms=args.num_rooms,
+        rooms=args.rooms,
+        meta_file_for_rooms=args.meta,
     )
     pipeline.run()
 
