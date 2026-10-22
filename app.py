@@ -276,17 +276,20 @@ async def export_csv():
 # 4. Mount Gradio interface to satisfy Hugging Face Spaces Gradio SDK & ZeroGPU scanner
 try:
     import spaces
+    import torch
 
     @spaces.GPU
-    def _gpu_worker(text: str = "") -> str:
-        return text
+    def _gpu_worker(n: float = 0.0) -> str:
+        # Use torch to prevent Gradio from transpiling this to JavaScript
+        t = torch.zeros(1).cuda()
+        return f"GPU Ready: {t.device}"
 except Exception:
-    def _gpu_worker(text: str = "") -> str:
-        return text
+    def _gpu_worker(n: float = 0.0) -> str:
+        return "CPU Ready"
 
 demo = gr.Interface(
     fn=_gpu_worker,
-    inputs=gr.Textbox(visible=False),
+    inputs=gr.Number(value=0, visible=False),
     outputs=gr.Textbox(visible=False),
     title="ASR Transcript Reviewer Backend",
 )
