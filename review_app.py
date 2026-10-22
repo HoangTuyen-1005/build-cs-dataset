@@ -64,32 +64,53 @@ APP_HTML = r"""<!doctype html>
 
     /* VS Code Style Sidebar */
     #sidebar {
-      width: 320px;
-      min-width: 250px;
-      max-width: 440px;
+      width: var(--sidebar-w, 320px);
+      min-width: 220px;
+      max-width: 650px;
       background: var(--bg-sidebar);
       color: var(--text-sidebar);
       border-right: 1px solid var(--border-sidebar);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
-      transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: margin-left 0.22s cubic-bezier(0.4, 0, 0.2, 1);
       user-select: none;
       z-index: 20;
+      position: relative;
     }
     #sidebar.collapsed {
-      margin-left: -320px;
+      margin-left: calc(-1 * var(--sidebar-w, 320px));
+    }
+    .sidebar-resizer {
+      width: 6px;
+      background: transparent;
+      cursor: col-resize;
+      position: relative;
+      flex-shrink: 0;
+      transition: background 0.15s ease, box-shadow 0.15s ease;
+      z-index: 25;
+      margin-left: -3px;
+      margin-right: -3px;
+    }
+    .sidebar-resizer:hover, .sidebar-resizer.is-resizing {
+      background: #89b4fa;
+      box-shadow: 0 0 10px rgba(137, 180, 250, 0.6);
+    }
+    #sidebar.collapsed + .sidebar-resizer {
+      display: none;
     }
     .sidebar-header {
-      padding: 12px 14px 10px;
+      padding: 10px 12px 10px;
       border-bottom: 1px solid var(--border-sidebar);
       background: #14141f;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
     .sidebar-title-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
     }
     .sidebar-title {
       font-size: 11px;
@@ -101,6 +122,16 @@ APP_HTML = r"""<!doctype html>
       align-items: center;
       gap: 6px;
     }
+    .sidebar-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .sidebar-header-actions .icon-btn {
+      padding: 3px 6px;
+      font-size: 12px;
+      border-radius: 4px;
+    }
     .icon-btn {
       background: transparent;
       border: 0;
@@ -110,6 +141,7 @@ APP_HTML = r"""<!doctype html>
       border-radius: 4px;
       font-size: 13px;
       line-height: 1;
+      transition: background 0.12s, color 0.12s;
     }
     .icon-btn:hover {
       background: var(--bg-sidebar-hover);
@@ -126,8 +158,9 @@ APP_HTML = r"""<!doctype html>
       border: 1px solid #313244;
       border-radius: 6px;
       color: #cdd6f4;
-      padding: 6px 26px 6px 9px;
+      padding: 5px 26px 5px 9px;
       font-size: 12px;
+      transition: border-color 0.15s;
     }
     .search-input:focus {
       outline: none;
@@ -143,15 +176,39 @@ APP_HTML = r"""<!doctype html>
       font-size: 11px;
       padding: 2px 4px;
     }
+    .sidebar-sort-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sidebar-sort-label {
+      font-size: 10.5px;
+      color: #7f849c;
+      flex-shrink: 0;
+    }
+    .sidebar-sort-select {
+      flex: 1;
+      background: #11111b;
+      border: 1px solid #313244;
+      border-radius: 5px;
+      color: #cdd6f4;
+      font-size: 11px;
+      padding: 3px 6px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .sidebar-sort-select:focus {
+      border-color: #89b4fa;
+    }
     .sidebar-filter-tabs {
       display: flex;
       gap: 3px;
-      margin-top: 8px;
     }
     .filter-tab {
       flex: 1;
       padding: 4px 2px;
-      font-size: 10.5px;
+      font-size: 10px;
       border-radius: 4px;
       background: #1e1e2e;
       color: #9399b2;
@@ -178,7 +235,7 @@ APP_HTML = r"""<!doctype html>
       background: #161623;
     }
     .sidebar-stats {
-      padding: 6px 14px 4px;
+      padding: 6px 12px 4px;
       font-size: 11px;
       color: var(--text-sidebar-muted);
       display: flex;
@@ -200,52 +257,70 @@ APP_HTML = r"""<!doctype html>
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 6px 0 16px;
+      padding: 4px 0 16px;
     }
     .tree-container::-webkit-scrollbar { width: 6px; }
     .tree-container::-webkit-scrollbar-thumb { background: #313244; border-radius: 3px; }
 
     /* Tree View Items */
     .tree-item {
+      cursor: pointer;
+      transition: background 0.1s ease;
+      user-select: none;
+    }
+    .tree-root {
       display: flex;
       align-items: center;
-      padding: 5px 12px;
-      cursor: pointer;
+      padding: 6px 12px;
       font-size: 12.5px;
       color: var(--text-sidebar);
       gap: 6px;
-      transition: background 0.1s;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      overflow: hidden;
+      border-left: 3px solid transparent;
+      border-bottom: 1px solid var(--border-sidebar);
+      background: rgba(255, 255, 255, 0.015);
     }
-    .tree-item:hover {
+    .tree-root:hover {
       background: var(--bg-sidebar-hover);
     }
-    .tree-item.active {
+    .tree-root.active {
       background: var(--bg-sidebar-active);
       color: #89b4fa;
       font-weight: 600;
-      border-left: 3px solid #89b4fa;
+      border-left-color: #89b4fa;
+    }
+    .tree-user {
+      display: flex;
+      align-items: center;
+      padding: 6px 10px 6px 10px;
+      font-size: 12.5px;
+      color: var(--text-sidebar);
+      gap: 5px;
+      border-left: 3px solid transparent;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+      transition: background 0.12s, border-left-color 0.12s;
+    }
+    .tree-user:hover {
+      background: var(--bg-sidebar-hover);
+    }
+    .tree-user.active {
+      background: rgba(137, 180, 250, 0.12);
+      border-left-color: #89b4fa;
     }
     .tree-caret {
       display: inline-block;
-      width: 12px;
+      width: 14px;
       text-align: center;
       font-size: 9px;
       color: #7f849c;
-      transition: transform 0.12s;
+      transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s;
+      flex-shrink: 0;
     }
     .tree-caret.expanded {
       transform: rotate(90deg);
+      color: #89b4fa;
     }
     .tree-icon {
       font-size: 13px;
-      line-height: 1;
-      flex-shrink: 0;
-    }
-    .chunk-status-icon {
-      font-size: 11px;
       line-height: 1;
       flex-shrink: 0;
     }
@@ -254,10 +329,33 @@ APP_HTML = r"""<!doctype html>
       text-overflow: ellipsis;
       white-space: nowrap;
       flex: 1;
+      font-size: 12px;
+    }
+    .btn-user-scope {
+      background: #313244;
+      border: 1px solid #45475a;
+      color: #cdd6f4;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+      flex-shrink: 0;
+      margin-left: auto;
+      margin-right: 4px;
+    }
+    .tree-user:hover .btn-user-scope {
+      opacity: 1;
+    }
+    .btn-user-scope:hover {
+      background: #89b4fa;
+      color: #11111b;
+      border-color: #89b4fa;
+      font-weight: 600;
     }
     .tree-badge {
-      margin-left: auto;
-      font-size: 10.5px;
+      font-size: 10px;
       background: #313244;
       color: #a6adc8;
       padding: 1px 6px;
@@ -269,28 +367,93 @@ APP_HTML = r"""<!doctype html>
       color: #ffffff;
       font-weight: 600;
     }
-    .tree-item.active .tree-badge {
+    .tree-root.active .tree-badge {
       background: #89b4fa;
       color: #11111b;
       font-weight: 700;
     }
     .tree-children {
       display: none;
+      overflow: hidden;
     }
     .tree-children.expanded {
       display: block;
+      animation: treeChildrenFadeIn 0.18s ease-out;
     }
-    .tree-user { padding-left: 24px; }
+    @keyframes treeChildrenFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     .tree-chunk {
-      padding-left: 42px;
+      padding: 5px 10px 5px 32px;
       font-size: 11.5px;
       color: #9399b2;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+      border-left: 3px solid transparent;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+      transition: background 0.12s, border-left-color 0.12s;
+    }
+    .tree-chunk:hover {
+      background: var(--bg-sidebar-hover);
     }
     .tree-chunk.active-chunk {
-      background: rgba(137, 180, 250, 0.18);
+      background: rgba(137, 180, 250, 0.16);
+      border-left-color: #89b4fa;
+    }
+    .chunk-line-main {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+    }
+    .chunk-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .chunk-dot.verified {
+      background: #22c55e;
+      box-shadow: 0 0 5px rgba(34, 197, 94, 0.5);
+    }
+    .chunk-dot.claimed {
+      background: #eab308;
+      box-shadow: 0 0 5px rgba(234, 179, 8, 0.5);
+    }
+    .chunk-dot.unverified {
+      background: #6c7086;
+    }
+    .chunk-num {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 700;
+      font-size: 11px;
+      color: #cdd6f4;
+      flex-shrink: 0;
+    }
+    .tree-chunk.active-chunk .chunk-num {
       color: #89b4fa;
-      font-weight: 600;
-      border-left: 3px solid #89b4fa;
+    }
+    .chunk-dur {
+      font-size: 10px;
+      color: #7f849c;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 0 4px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .chunk-line-snippet {
+      font-size: 11px;
+      color: #8890a5;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-left: 13px;
+    }
+    .tree-chunk.active-chunk .chunk-line-snippet {
+      color: #bac2de;
     }
 
     /* Live Presence Badges in Sidebar */
@@ -317,6 +480,23 @@ APP_HTML = r"""<!doctype html>
       color: #94a3b8;
       margin-left: 4px;
       font-weight: 500;
+      flex-shrink: 0;
+    }
+    @keyframes locatePulse {
+      0% {
+        box-shadow: inset 0 0 0 0 rgba(137, 180, 250, 0.9);
+        background: rgba(137, 180, 250, 0.35);
+      }
+      50% {
+        box-shadow: inset 0 0 0 2px rgba(137, 180, 250, 0.5);
+        background: rgba(137, 180, 250, 0.22);
+      }
+      100% {
+        box-shadow: inset 0 0 0 0 rgba(137, 180, 250, 0);
+      }
+    }
+    .locate-pulse {
+      animation: locatePulse 1.2s ease-out;
     }
 
     /* Main Review Panel */
@@ -641,12 +821,28 @@ APP_HTML = r"""<!doctype html>
   <aside id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-title-row">
-        <span class="sidebar-title">📁 EXPLORER : DATASET</span>
-        <button id="btn-collapse-sidebar" class="icon-btn" title="Thu gọn sidebar (Ctrl+B)">◀</button>
+        <span class="sidebar-title">📁 EXPLORER</span>
+        <div class="sidebar-header-actions">
+          <button id="btn-locate-active" class="icon-btn" title="Cuộn đến mẫu hiện tại (Alt+L)">🎯</button>
+          <button id="btn-expand-all" class="icon-btn" title="Mở tất cả thư mục">📂</button>
+          <button id="btn-collapse-all" class="icon-btn" title="Thu gọn tất cả thư mục">📁</button>
+          <button id="btn-collapse-sidebar" class="icon-btn" title="Thu gọn sidebar (Ctrl+B)">◀</button>
+        </div>
       </div>
       <div class="search-box">
-        <input id="search-input" class="search-input" type="text" placeholder="🔍 Lọc user ID, filename..." spellcheck="false">
+        <input id="search-input" class="search-input" type="text" placeholder="🔍 Tìm user, file, transcript... (Ctrl+Shift+F)" spellcheck="false">
         <button id="clear-search" class="clear-search-btn" title="Xóa tìm kiếm" style="display:none;">✕</button>
+      </div>
+      <div class="sidebar-sort-row">
+        <label for="sidebar-sort-select" class="sidebar-sort-label">Sắp xếp:</label>
+        <select id="sidebar-sort-select" class="sidebar-sort-select" title="Cách sắp xếp thư mục User">
+          <option value="pending-desc">⏳ Chưa duyệt lên đầu</option>
+          <option value="default">🔢 Thứ tự mặc định</option>
+          <option value="progress-asc">📊 Tiến độ thấp nhất</option>
+          <option value="duration-desc">⏱️ Thời lượng audio nhiều nhất</option>
+          <option value="verified-desc">✅ Đã duyệt nhiều nhất</option>
+          <option value="name-asc">🔤 Tên User (A → Z)</option>
+        </select>
       </div>
       <div class="sidebar-filter-tabs">
         <button class="filter-tab active" data-vfilter="all" id="tab-vfilter-all">Tất cả</button>
@@ -667,6 +863,9 @@ APP_HTML = r"""<!doctype html>
       <!-- Generated tree view -->
     </div>
   </aside>
+
+  <!-- Draggable Sidebar Resizer Handle -->
+  <div id="sidebar-resizer" class="sidebar-resizer" title="Kéo để chỉnh kích thước sidebar (Nhấp đúp để đặt lại 320px)"></div>
 
   <!-- Main Review Panel -->
   <main id="main">
@@ -722,7 +921,7 @@ APP_HTML = r"""<!doctype html>
 
       <div id="claim-banner" class="claim-banner" style="display:none;"></div>
 
-      <p class="details">Phím tắt: <kbd>Space</kbd> phát/dừng, <kbd>←</kbd>/<kbd>→</kbd> tua track, <kbd>[</kbd>/<kbd>]</kbd> câu trước/tiếp, <kbd>Ctrl+S</kbd> lưu, <kbd>Ctrl+Enter</kbd> duyệt & tiếp.</p>
+      <p class="details">Phím tắt: <kbd>Space</kbd> phát/dừng, <kbd>←</kbd>/<kbd>→</kbd> tua track, <kbd>[</kbd>/<kbd>]</kbd> câu trước/tiếp, <kbd>Ctrl+S</kbd> lưu, <kbd>Ctrl+Enter</kbd> duyệt & tiếp, <kbd>Ctrl+B</kbd> sidebar, <kbd>Alt+L</kbd> định vị mẫu.</p>
       <div class="details" id="details"></div>
       <audio id="audio" controls preload="metadata"></audio>
       <div class="player-tools">
@@ -769,11 +968,46 @@ let currentClaimedRowIndex = null;
 let heartbeatTimer = null;
 let syncTimer = null;
 
-// Filter state
+// Filter & Sidebar state
 let activeScope = { type: 'all', userId: null };
 let verificationFilter = 'all'; // 'all' | 'unverified' | 'verified' | 'mine'
 let expandedTreeKeys = new Set();
 let searchQuery = '';
+let sidebarSortMode = localStorage.getItem('asr_sidebar_sort') || 'pending-desc';
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function formatChunkName(filename) {
+  if (!filename) return 'Mẫu #?';
+  const m = filename.match(/_(\d{3,5})\.[a-zA-Z0-9]+$/);
+  if (m) {
+    return `#${m[1]}`;
+  }
+  const mNum = filename.match(/\d+/g);
+  if (mNum && mNum.length > 0) {
+    const lastNum = mNum[mNum.length - 1];
+    if (lastNum.length <= 5) return `#${lastNum}`;
+  }
+  return filename.length > 20 ? filename.slice(0, 10) + '...' + filename.slice(-7) : filename;
+}
 
 const $ = s => document.querySelector(s);
 const status = (message, error=false) => {
@@ -991,7 +1225,7 @@ function updateScopeUI() {
   updateStatsDashboard();
 }
 
-// Build user map with verification counts
+// Build user map with verification counts & durations
 function getUsersMap() {
   const usersMap = new Map();
   allRows.forEach((r, idx) => {
@@ -1000,20 +1234,58 @@ function getUsersMap() {
         userId: r.user_id,
         samples: 0,
         verifiedSamples: 0,
+        totalDuration: 0,
+        verifiedDuration: 0,
         indices: []
       });
     }
     const usr = usersMap.get(r.user_id);
     usr.samples++;
-    if (r.is_verified) usr.verifiedSamples++;
+    const d = parseFloat(r.duration) || 0;
+    usr.totalDuration += d;
+    if (r.is_verified) {
+      usr.verifiedSamples++;
+      usr.verifiedDuration += d;
+    }
     usr.indices.push(idx);
   });
   return usersMap;
 }
 
-function renderSidebar() {
+// Multi-mode sorting of users
+function getSortedUsersList(usersMap) {
+  const users = Array.from(usersMap.values());
+  if (sidebarSortMode === 'pending-desc') {
+    users.sort((a, b) => {
+      const aPending = a.samples - a.verifiedSamples;
+      const bPending = b.samples - b.verifiedSamples;
+      if (bPending !== aPending) return bPending - aPending;
+      return a.userId.localeCompare(b.userId);
+    });
+  } else if (sidebarSortMode === 'progress-asc') {
+    users.sort((a, b) => {
+      const aPct = a.samples ? (a.verifiedSamples / a.samples) : 0;
+      const bPct = b.samples ? (b.verifiedSamples / b.samples) : 0;
+      if (aPct !== bPct) return aPct - bPct;
+      return (b.samples - b.verifiedSamples) - (a.samples - a.verifiedSamples);
+    });
+  } else if (sidebarSortMode === 'duration-desc') {
+    users.sort((a, b) => b.totalDuration - a.totalDuration);
+  } else if (sidebarSortMode === 'verified-desc') {
+    users.sort((a, b) => b.verifiedSamples - a.verifiedSamples);
+  } else if (sidebarSortMode === 'name-asc') {
+    users.sort((a, b) => a.userId.localeCompare(b.userId));
+  }
+  return users;
+}
+
+function renderSidebar(shouldAutoScroll = false) {
   const container = $('#tree-container');
+  if (!container) return;
+  const prevScrollTop = container.scrollTop;
+
   const usersMap = getUsersMap();
+  const sortedUsers = getSortedUsersList(usersMap);
   const q = searchQuery.toLowerCase().trim();
   const myName = getReviewerName().toLowerCase();
 
@@ -1026,10 +1298,19 @@ function renderSidebar() {
   const verifiedDuration = allRows.reduce((acc, r) => acc + (r.is_verified ? (parseFloat(r.duration) || 0) : 0), 0);
   const durPct = totalDuration > 0 ? Math.round((verifiedDuration / totalDuration) * 100) : 0;
 
-  // Sidebar stats & progress bar (showing both count and audio duration)
-  $('#sidebar-stats').innerHTML = `<span>${usersMap.size} user • ${allRows.length} mẫu • ⏱️ <strong style="color:#4ade80;">${formatDuration(verifiedDuration)}</strong> / ${formatDuration(totalDuration)} (${durPct}%)</span>`;
+  // Sidebar stats & progress bar
+  const statsEl = $('#sidebar-stats');
+  if (statsEl) {
+    statsEl.innerHTML = `<span>${usersMap.size} user • ${allRows.length} mẫu • ⏱️ <strong style="color:#4ade80;">${formatDuration(verifiedDuration)}</strong> / ${formatDuration(totalDuration)} (${durPct}%)</span>`;
+  }
   const fill = $('#sidebar-progress-fill');
   if (fill) fill.style.width = durPct + '%';
+
+  // Ensure sort select reflects current mode
+  const sortSelect = $('#sidebar-sort-select');
+  if (sortSelect && sortSelect.value !== sidebarSortMode) {
+    sortSelect.value = sidebarSortMode;
+  }
 
   // Update filter tab texts and active classes
   const tabAll = $('#tab-vfilter-all');
@@ -1055,15 +1336,19 @@ function renderSidebar() {
   else if (verificationFilter === 'mine') rootCount = myVerified;
 
   html += `
-    <div class="tree-item ${isAllActive ? 'active' : ''}" data-type="all">
+    <div class="tree-item tree-root ${isAllActive ? 'active' : ''}" data-type="all">
       <span class="tree-icon">🌟</span>
       <span class="tree-label"><strong>Tất cả dữ liệu</strong></span>
       <span class="tree-badge">${rootCount}</span>
     </div>
   `;
 
-  // Render Users
-  usersMap.forEach((userData, userId) => {
+  let matchedChunksCount = 0;
+  let matchedUsersCount = 0;
+
+  // Render Sorted Users
+  sortedUsers.forEach(userData => {
+    const userId = userData.userId;
     const userKey = `user_${userId}`;
     const isUserActive = activeScope.type === 'user' && activeScope.userId === userId;
     const isCurrentUser = (scopedIndices.length && allRows[scopedIndices[scopedIndex]]?.user_id === userId);
@@ -1077,35 +1362,31 @@ function renderSidebar() {
       return true;
     });
 
-    // Check filter match
-    const userMatches = !q || userId.toLowerCase().includes(q) || filteredIndices.some(i => allRows[i].filename.toLowerCase().includes(q));
-    if (q && !userMatches) {
-      return;
-    }
+    // Check filter match against user ID, filename, transcript text, and verifier
+    const userMatches = !q || userId.toLowerCase().includes(q) || filteredIndices.some(i => {
+      const r = allRows[i];
+      return r.filename.toLowerCase().includes(q) || (r.text || '').toLowerCase().includes(q) || (r.verified_by || '').toLowerCase().includes(q);
+    });
 
-    if (verificationFilter !== 'all' && filteredIndices.length === 0) {
-      return;
-    }
+    if (q && !userMatches) return;
+    if (verificationFilter !== 'all' && filteredIndices.length === 0) return;
 
-    // Auto expand on search or active
+    matchedUsersCount++;
+
+    // Auto expand on search or when contains active sample
     const isExpanded = q ? true : (expandedTreeKeys.has(userKey) || isCurrentUser);
     const isAllDone = (userData.verifiedSamples === userData.samples && userData.samples > 0);
     const badgeText = `${userData.verifiedSamples}/${userData.samples}`;
 
-    let userTotalDur = 0;
-    let userVerDur = 0;
-    userData.indices.forEach(i => {
-      const d = parseFloat(allRows[i].duration) || 0;
-      userTotalDur += d;
-      if (allRows[i].is_verified) userVerDur += d;
-    });
-
     html += `
-      <div class="tree-item tree-user ${isUserActive ? 'active' : ''}" data-type="user" data-user="${userId}">
+      <div class="tree-item tree-user ${isUserActive ? 'active' : ''}" data-type="user" data-user="${escapeAttr(userId)}">
         <span class="tree-caret ${isExpanded ? 'expanded' : ''}" data-toggle-key="${userKey}">▶</span>
-        <span class="tree-icon">📁</span>
-        <span class="tree-label" title="User ID: ${userId}">${userId}</span>
-        <span class="tree-badge ${isAllDone ? 'badge-all-done' : ''}" title="${userData.verifiedSamples}/${userData.samples} mẫu (${formatDuration(userVerDur)} / ${formatDuration(userTotalDur)})">${badgeText}</span>
+        <span class="tree-icon">${isExpanded ? '📂' : '📁'}</span>
+        <span class="tree-label" title="User ID: ${escapeAttr(userId)}"><strong>${escapeHtml(userId)}</strong></span>
+        <button class="btn-user-scope" data-user="${escapeAttr(userId)}" title="Chỉ làm việc với user này (giới hạn phạm vi)">📍 Lọc</button>
+        <span class="tree-badge ${isAllDone ? 'badge-all-done' : ''}" title="${userData.verifiedSamples}/${userData.samples} mẫu (${formatDuration(userData.verifiedDuration)} / ${formatDuration(userData.totalDuration)})">
+          ${isAllDone ? '✓ Xong' : badgeText}
+        </span>
       </div>
       <div class="tree-children ${isExpanded ? 'expanded' : ''}" id="children_${userKey}">
     `;
@@ -1114,13 +1395,14 @@ function renderSidebar() {
     filteredIndices.forEach(idx => {
       const row = allRows[idx];
       const isCurrentChunk = (scopedIndices.length && scopedIndices[scopedIndex] === idx);
-      const chunkName = row.filename;
+      const chunkNum = formatChunkName(row.filename);
+      const chunkText = (row.text || '').trim();
 
-      if (q && !chunkName.toLowerCase().includes(q) && !userId.toLowerCase().includes(q)) {
+      if (q && !row.filename.toLowerCase().includes(q) && !userId.toLowerCase().includes(q) && !chunkText.toLowerCase().includes(q) && !(row.verified_by || '').toLowerCase().includes(q)) {
         return;
       }
 
-      const statusIcon = row.is_verified ? '✅' : '⚪';
+      matchedChunksCount++;
 
       // Live Claim presence badge
       const claim = activeClaims[String(row.row_index)] || activeClaims[row.row_index];
@@ -1129,21 +1411,27 @@ function renderSidebar() {
         if (claim.user.toLowerCase() === myName) {
           claimBadge = `<span class="chunk-claim-badge mine" title="Bạn đang mở mẫu này">🔵 Tôi</span>`;
         } else {
-          claimBadge = `<span class="chunk-claim-badge other" title="Đang được review bởi ${claim.user}">🟡 ${claim.user}</span>`;
+          claimBadge = `<span class="chunk-claim-badge other" title="Đang được duyệt bởi ${escapeAttr(claim.user)}">🟡 ${escapeHtml(claim.user)}</span>`;
         }
       }
 
       let verifierTag = '';
       if (row.is_verified && row.verified_by) {
-        verifierTag = `<span class="chunk-verifier-tag" title="Kiểm duyệt bởi ${row.verified_by}">[${row.verified_by}]</span>`;
+        verifierTag = `<span class="chunk-verifier-tag" title="Kiểm duyệt bởi ${escapeAttr(row.verified_by)}">✓ ${escapeHtml(row.verified_by)}</span>`;
       }
 
+      const snippet = chunkText || '(Chưa có transcript)';
+
       html += `
-        <div class="tree-item tree-chunk ${isCurrentChunk ? 'active-chunk' : ''}" data-type="chunk" data-index="${idx}" title="${row.audio_path} (${row.is_verified ? 'Đã duyệt bởi ' + (row.verified_by || 'người dùng') : 'Chưa duyệt'})">
-          <span class="chunk-status-icon">${statusIcon}</span>
-          <span class="tree-label">${chunkName}${verifierTag}</span>
-          ${claimBadge}
-          <span class="tree-badge" style="background:transparent; color:#6c7086;">${row.duration || ''}s</span>
+        <div class="tree-item tree-chunk ${isCurrentChunk ? 'active-chunk' : ''}" data-type="chunk" data-index="${idx}" title="${escapeAttr(row.filename)}\n⏱️ ${row.duration || 0}s\n📝 ${escapeAttr(chunkText)}">
+          <div class="chunk-line-main">
+            <span class="chunk-dot ${row.is_verified ? 'verified' : (claim ? 'claimed' : 'unverified')}"></span>
+            <span class="chunk-num">${escapeHtml(chunkNum)}</span>
+            <span class="chunk-dur">${row.duration || 0}s</span>
+            ${claimBadge}
+            ${verifierTag}
+          </div>
+          <div class="chunk-line-snippet">${escapeHtml(snippet)}</div>
         </div>
       `;
     });
@@ -1152,46 +1440,104 @@ function renderSidebar() {
   });
 
   container.innerHTML = html;
+  container.scrollTop = prevScrollTop;
 
-  // Add click handlers for tree items
+  // Attach click handlers
   container.querySelectorAll('.tree-item').forEach(el => {
     el.onclick = (e) => {
-      if (e.target.classList.contains('tree-caret')) {
+      // 1. Explicit user scope button
+      if (e.target.closest('.btn-user-scope')) {
         e.stopPropagation();
-        const key = e.target.getAttribute('data-toggle-key');
-        if (expandedTreeKeys.has(key)) {
-          expandedTreeKeys.delete(key);
-        } else {
-          expandedTreeKeys.add(key);
-        }
-        renderSidebar();
+        const userId = e.target.closest('.btn-user-scope').getAttribute('data-user');
+        setScope({ type: 'user', userId });
         return;
       }
 
       const type = el.getAttribute('data-type');
+
+      // 2. Click on User folder row -> Instant toggle expand/collapse without re-rendering DOM
+      if (type === 'user') {
+        const userId = el.getAttribute('data-user');
+        const userKey = `user_${userId}`;
+        const childrenEl = document.getElementById(`children_${userKey}`);
+        const caretEl = el.querySelector('.tree-caret');
+        const iconEl = el.querySelector('.tree-icon');
+
+        if (expandedTreeKeys.has(userKey)) {
+          expandedTreeKeys.delete(userKey);
+          if (childrenEl) childrenEl.classList.remove('expanded');
+          if (caretEl) caretEl.classList.remove('expanded');
+          if (iconEl) iconEl.textContent = '📁';
+        } else {
+          expandedTreeKeys.add(userKey);
+          if (childrenEl) childrenEl.classList.add('expanded');
+          if (caretEl) caretEl.classList.add('expanded');
+          if (iconEl) iconEl.textContent = '📂';
+        }
+        return;
+      }
+
+      // 3. Click on Root "Tất cả dữ liệu"
       if (type === 'all') {
         setScope({ type: 'all' });
-      } else if (type === 'user') {
-        const userId = el.getAttribute('data-user');
-        setScope({ type: 'user', userId });
-      } else if (type === 'chunk') {
+        return;
+      }
+
+      // 4. Click on a Chunk
+      if (type === 'chunk') {
         const targetIdx = Number(el.getAttribute('data-index'));
         const row = allRows[targetIdx];
         if (row) {
-          activeScope = { type: 'user', userId: row.user_id };
-          updateScopedIndices();
+          if (activeScope.type === 'user' && activeScope.userId !== row.user_id) {
+            activeScope = { type: 'user', userId: row.user_id };
+            updateScopedIndices();
+          }
           scopedIndex = Math.max(0, scopedIndices.indexOf(targetIdx));
           render();
         }
       }
     };
+
+    // Double click on user row scopes to that user
+    if (el.getAttribute('data-type') === 'user') {
+      el.ondblclick = (e) => {
+        const userId = el.getAttribute('data-user');
+        if (userId) setScope({ type: 'user', userId });
+      };
+    }
   });
 
-  // Auto scroll active chunk into view if present
-  const activeEl = container.querySelector('.tree-chunk.active-chunk');
-  if (activeEl) {
-    activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  // Auto scroll active chunk into view if requested
+  if (shouldAutoScroll) {
+    const activeEl = container.querySelector('.tree-chunk.active-chunk');
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   }
+}
+
+// Locate / Reveal active chunk with smooth scroll and pulse animation
+function locateActiveChunk() {
+  if (!scopedIndices.length || scopedIndex >= scopedIndices.length) return;
+  const currentIdx = scopedIndices[scopedIndex];
+  const row = allRows[currentIdx];
+  if (!row) return;
+
+  const userKey = `user_${row.user_id}`;
+  if (!expandedTreeKeys.has(userKey)) {
+    expandedTreeKeys.add(userKey);
+    renderSidebar(false);
+  }
+
+  setTimeout(() => {
+    const activeEl = document.querySelector(`.tree-chunk[data-index="${currentIdx}"]`);
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      activeEl.classList.remove('locate-pulse');
+      void activeEl.offsetWidth; // trigger reflow
+      activeEl.classList.add('locate-pulse');
+    }
+  }, 60);
 }
 
 function setScope(newScope) {
@@ -1336,7 +1682,7 @@ async function syncRealtime() {
       });
     }
 
-    renderSidebar();
+    renderSidebar(false);
     updateStatsDashboard();
     if (scopedIndices.length && scopedIndex < scopedIndices.length) {
       const actualIdx = scopedIndices[scopedIndex];
@@ -1413,7 +1759,7 @@ async function load() {
 async function render() {
   updateScopedIndices();
   updateScopeUI();
-  renderSidebar();
+  renderSidebar(true);
 
   if (!scopedIndices.length) {
     $('#details').textContent = 'Không có mẫu nào trong phạm vi đã chọn.';
@@ -1644,6 +1990,57 @@ document.querySelectorAll('.filter-tab').forEach(tab => {
   };
 });
 
+// Sidebar Resizer Handle Logic
+function initSidebarResizer() {
+  const sidebar = $('#sidebar');
+  const resizer = $('#sidebar-resizer');
+  if (!sidebar || !resizer) return;
+
+  const savedWidth = localStorage.getItem('asr_sidebar_width');
+  if (savedWidth) {
+    const w = Math.min(650, Math.max(220, parseInt(savedWidth, 10)));
+    sidebar.style.setProperty('--sidebar-w', w + 'px');
+  }
+
+  let isDragging = false;
+  let startX = 0;
+  let startW = 0;
+
+  resizer.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startX = e.clientX;
+    startW = sidebar.getBoundingClientRect().width;
+    resizer.classList.add('is-resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const newW = Math.min(650, Math.max(220, startW + (e.clientX - startX)));
+    sidebar.style.setProperty('--sidebar-w', newW + 'px');
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    resizer.classList.remove('is-resizing');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try {
+      localStorage.setItem('asr_sidebar_width', sidebar.getBoundingClientRect().width);
+    } catch (e) {}
+  });
+
+  // Double click resets to default 320px
+  resizer.addEventListener('dblclick', () => {
+    sidebar.style.setProperty('--sidebar-w', '320px');
+    try {
+      localStorage.setItem('asr_sidebar_width', 320);
+    } catch (e) {}
+  });
+}
+
 // Sidebar Toggle
 function toggleSidebar(force) {
   const sb = $('#sidebar');
@@ -1655,17 +2052,34 @@ function toggleSidebar(force) {
 $('#btn-collapse-sidebar').onclick = () => toggleSidebar(true);
 $('#btn-open-sidebar').onclick = () => toggleSidebar(false);
 
+// Explorer Toolbar actions
+$('#btn-locate-active').onclick = () => locateActiveChunk();
+$('#btn-expand-all').onclick = () => {
+  const usersMap = getUsersMap();
+  usersMap.forEach((_, u) => expandedTreeKeys.add('user_' + u));
+  renderSidebar(false);
+};
+$('#btn-collapse-all').onclick = () => {
+  expandedTreeKeys.clear();
+  renderSidebar(false);
+};
+$('#sidebar-sort-select').onchange = (e) => {
+  sidebarSortMode = e.target.value;
+  try { localStorage.setItem('asr_sidebar_sort', sidebarSortMode); } catch (err) {}
+  renderSidebar(false);
+};
+
 // Search input
 $('#search-input').addEventListener('input', e => {
   searchQuery = e.target.value;
   $('#clear-search').style.display = searchQuery ? 'inline-block' : 'none';
-  renderSidebar();
+  renderSidebar(false);
 });
 $('#clear-search').onclick = () => {
   $('#search-input').value = '';
   searchQuery = '';
   $('#clear-search').style.display = 'none';
-  renderSidebar();
+  renderSidebar(false);
 };
 
 // Ensure speed is maintained whenever audio loads metadata or starts playing
@@ -1724,6 +2138,25 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
     e.preventDefault();
     toggleSidebar();
+    return;
+  }
+
+  // Ctrl+Shift+F or Alt+F: Focus search in explorer
+  if ((e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') || (e.altKey && e.key.toLowerCase() === 'f')) {
+    e.preventDefault();
+    toggleSidebar(false);
+    const searchInput = $('#search-input');
+    if (searchInput) {
+      searchInput.focus();
+      searchInput.select();
+    }
+    return;
+  }
+
+  // Alt+L: Locate active sample in explorer
+  if (e.altKey && e.key.toLowerCase() === 'l') {
+    e.preventDefault();
+    locateActiveChunk();
     return;
   }
 
@@ -1802,6 +2235,7 @@ try {
   }
 } catch (e) {}
 
+initSidebarResizer();
 load().catch(e => status('Không đọc được metadata: ' + e.message, true));
 </script>
 </body>
