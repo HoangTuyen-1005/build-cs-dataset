@@ -1616,6 +1616,7 @@ class ReviewServer(BaseHTTPRequestHandler):
                     }
                     for idx, c in active_claims.items()
                 }
+            self.send_json(data)
         elif path == "/api/export_csv":
             try:
                 with metadata_lock:
