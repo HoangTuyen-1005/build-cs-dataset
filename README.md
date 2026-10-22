@@ -27,10 +27,10 @@ build-cs-dataset/
 ├── vad.py                     # Module nhận diện tiếng nói với FireRedVAD
 ├── asr.py                     # Module phiên dịch với Faster-Whisper
 ├── main.py                    # Script điều khiển chính (CLI pipeline)
-├── input/                     # Thư mục chứa audio đầu vào ({room_id}/{user_id}/*.ogg)
+├── input/                     # Thư mục chứa audio đầu vào ({user_id}/*.ogg)
 ├── seg_temp/                  # Thư mục chứa audio trung gian & raw segments
 └── cs_dataset/
-    ├── train/                 # Audio chunks hoàn thiện ({room_id}/{user_id}/*.wav)
+    ├── train/                 # Audio chunks hoàn thiện ({user_id}/*.wav)
     └── metadata.csv           # File metadata của dataset
 ```
 
@@ -97,7 +97,7 @@ python download_tracks.py
 python download_tracks.py --num_rooms 5
 ```
 
-Các file audio tải về sẽ tự động được phân nhóm chuẩn 2 cấp thư mục: `input/{room_id}/{user_id}/`.
+Các file audio tải về sẽ tự động được phân nhóm chuẩn trực tiếp theo thư mục user: `input/{user_id}/`.
 Nếu bạn đã có sẵn file ở cấp thư mục cũ, script sẽ tự động sắp xếp lại (hoặc chạy `python download_tracks.py --reorganize`).
 
 ### Bước 2: Chạy Pipeline Build Dataset
@@ -119,19 +119,24 @@ python main.py --type "cs" --num_rooms 10
 python main.py --type "cs"
 ```
 
-### Sửa transcript thủ công trên máy
+### Sửa transcript & Đánh dấu kiểm duyệt đa người dùng (Multi-User Review App)
 
-Chạy app review cục bộ (không cần tài khoản và không cần cài package mới):
+Chạy app review hỗ trợ nhiều người cùng làm việc đồng thời (không cần cài package ngoài hay database):
 
 ```powershell
 python review_app.py
 ```
 
-Mở `http://127.0.0.1:8765`. App đọc `cs_dataset/metadata.csv`, phát file tại
-`audio_path`, và ghi trực tiếp phần text đã sửa lại vào CSV khi bấm **Lưu thay đổi**.
-Có nút **🗑️ Xóa mẫu này** để xóa vĩnh viễn file audio kém chất lượng khỏi ổ đĩa và loại bỏ dòng đó khỏi `metadata.csv`.
-Có thanh chỉnh tốc độ từ 0.5× đến 2×, thanh chọn bước tua 1–5 giây, `Space` để
-phát/dừng, phím mũi tên để tua theo bước đã chọn, và `Ctrl+S` để lưu.
+- Mở `http://127.0.0.1:8765` trên máy hoặc `http://<IP_LAN>:8765` từ các máy khác trong mạng nội bộ (hoặc qua Cloudflare Tunnel / Ngrok / Tailscale để chia sẻ ra Internet).
+- **Hỗ trợ đa người dùng (Multi-User Collaboration):**
+  - **Định danh người duyệt (Reviewer ID):** Nhập tên của bạn ở ô **👤 Người duyệt** trên góc phải. Tên được lưu tự động vào `localStorage` và ghi vào cột `verified_by` trong `metadata.csv` khi duyệt.
+  - **Khóa mẫu tự động (Auto-Claim & Heartbeat):** Khi bạn mở một mẫu, app tự động cấp quyền khóa chỉnh sửa (Claim) cho bạn. Người khác mở mẫu đó sẽ thấy cảnh báo: `⚠️ Đang được review bởi [Tên]` và có nút `⏭️ Nhảy sang mẫu trống khác`.
+  - **Tự động bỏ qua thông minh (Auto-Skipping):** Khi bấm `✅ Đã duyệt & Tiếp →` (`Ctrl+Enter`) hoặc `Tiếp →`, app sẽ tự động tìm mẫu chưa duyệt tiếp theo và **bỏ qua tất cả các mẫu đang có người khác làm**, giúp nhiều người phối hợp mượt mà không bị trùng lặp.
+  - **Hiển thị hiện diện thời gian thực (Live Presence):** Sidebar hiển thị ngay lập tức badge `🟡 [Tên]` cho mẫu đang có người làm, `🔵 Tôi` cho mẫu bạn đang giữ, và `✅ [Tên]` cho mẫu đã duyệt.
+  - **Bộ lọc đa dạng:** Thanh bên có các tab: `Tất cả`, `⏳ Chưa duyệt`, `✅ Đã duyệt`, và `👤 Của tôi` (xem các mẫu do chính bạn đã duyệt).
+  - **An toàn dữ liệu:** Backend sử dụng `threading.RLock()` đảm bảo việc lưu đồng thời từ nhiều người không bao giờ làm lỗi file `metadata.csv`.
+- **Thanh bên EXPLORER (phong cách VS Code):** Linh hoạt lọc và duyệt theo từng folder `user_id`.
+- **Phím tắt nhanh:** `Space` (phát/dừng), `←`/`→` (tua audio liên tục), `[`/`]` (mẫu trước/tiếp), `Ctrl+S` (lưu), `Ctrl+Enter` (duyệt & tiếp), `Ctrl+B` (thu gọn sidebar).
 
 ---
 
@@ -142,11 +147,13 @@ File `cs_dataset/metadata.csv` được sinh ra với cấu trúc như sau:
 | Cột | Ý Nghĩa | Ví Dụ |
 | :--- | :--- | :--- |
 | `id` | Mã định danh duy nhất (UUID) | `a07dbeda-b7f9-4e27-953a-da6d0393bb83` |
-| `audio_path` | Đường dẫn file tương đối trong dataset | `train/{room_id}/{user_id}/sample_0001.wav` |
+| `audio_path` | Đường dẫn file tương đối trong dataset | `train/{user_id}/sample_0001.wav` |
 | `text` | Văn bản phiên dịch từ audio | `Nếu thường xuyên lướt TikTok...` |
 | `duration` | Thời lượng file (giây) | `29.94` |
 | `type` | Loại dữ liệu phân loại | `cs` |
-| `speaker_id` | ID người nói | `speaker_001` |
+| `speaker_id` | ID người nói | `1831539783235538944` |
+| `is_verified` | Đã kiểm duyệt transcript hay chưa | `True` / `False` |
+| `verified_by` | Tên người kiểm duyệt mẫu này | `Tuyen`, `Huong` |
 
 ---
 

@@ -91,20 +91,18 @@ def download_single_file(
     else:
         target_filename = raw_filename
 
-    # Organize into 2-level subfolders: input/{room_id}/{user_id}/
-    if room_id and user_id:
-        target_folder = output_dir / room_id / user_id
-    elif room_id:
-        target_folder = output_dir / room_id
-    else:
-        target_folder = output_dir / user_id if user_id else output_dir
-
+    # Organize directly into user_id subfolder: input/{user_id}/
+    target_folder = output_dir / user_id if user_id else output_dir / "unknown_user"
     target_folder.mkdir(parents=True, exist_ok=True)
 
     target_path = target_folder / target_filename
     temp_path = target_folder / f"{target_filename}.part"
 
-    # Migration from older 1-level (room_folder) or flat (output_dir) locations
+    # Migration from older 2-level (room/user) or 1-level (room) or flat (output_dir) locations
+    if room_id and user_id:
+        old_2level_path = output_dir / room_id / user_id / target_filename
+        if old_2level_path.exists() and not target_path.exists():
+            old_2level_path.replace(target_path)
     if room_id:
         old_room_path = output_dir / room_id / target_filename
         if old_room_path.exists() and not target_path.exists():
@@ -171,8 +169,8 @@ def download_single_file(
 def reorganize_existing_files(output_dir: Path) -> int:
     """
     Reorganizes existing files in output_dir:
-    From: output_dir/{room_id}/{filename}.ogg
-    To:   output_dir/{room_id}/{user_id}/{filename}.ogg
+    From: output_dir/{room_id}/{user_id}/{filename}.ogg or output_dir/{room_id}/{filename}.ogg
+    To:   output_dir/{user_id}/{filename}.ogg
     """
     supported_exts = {".ogg", ".wav", ".mp3", ".m4a", ".flac", ".aac"}
     moved_count = 0
@@ -180,27 +178,46 @@ def reorganize_existing_files(output_dir: Path) -> int:
     if not output_dir.exists():
         return 0
 
-    for room_entry in output_dir.iterdir():
-        if not room_entry.is_dir():
+    # Collect all audio files in output_dir
+    all_files = []
+    for root, dirs, files in os.walk(output_dir):
+        for f in files:
+            p = Path(root) / f
+            if p.suffix.lower() in supported_exts:
+                all_files.append(p)
+
+    for item in all_files:
+        parent_name = item.parent.name
+        if re.match(r"^\d{15,22}$", parent_name) and item.parent.parent == output_dir:
+            # Already in output_dir/{user_id}/
             continue
 
-        for item in list(room_entry.iterdir()):
-            if item.is_file() and item.suffix.lower() in supported_exts:
-                # Extract user_id / participant_id from filename (15-22 digit sequence)
-                m = re.search(r"_(\d{15,22})-mic-audio", item.name)
-                if not m:
-                    m = re.search(r"(\d{15,22})", item.name)
-                user_id = m.group(1) if m else "unknown_user"
+        # Extract user_id from filename or parent
+        m = re.search(r"_(\d{15,22})-mic-audio", item.name)
+        if not m:
+            m = re.search(r"(\d{15,22})", item.name)
+        user_id = m.group(1) if m else (parent_name if re.match(r"^\d{15,22}$", parent_name) else "unknown_user")
 
-                user_folder = room_entry / user_id
-                user_folder.mkdir(parents=True, exist_ok=True)
+        user_folder = output_dir / user_id
+        user_folder.mkdir(parents=True, exist_ok=True)
 
-                dest_file = user_folder / item.name
-                if not dest_file.exists():
-                    item.replace(dest_file)
-                    moved_count += 1
-                elif dest_file != item:
-                    item.unlink()
+        dest_file = user_folder / item.name
+        if item != dest_file:
+            if not dest_file.exists():
+                item.replace(dest_file)
+                moved_count += 1
+            else:
+                item.unlink()
+
+    # Clean up empty subdirectories
+    for root, dirs, _ in os.walk(output_dir, topdown=False):
+        for d in dirs:
+            dir_path = Path(root) / d
+            try:
+                if not any(dir_path.iterdir()):
+                    dir_path.rmdir()
+            except OSError:
+                pass
 
     return moved_count
 
