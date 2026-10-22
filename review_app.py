@@ -374,15 +374,9 @@ APP_HTML = r"""<!doctype html>
     }
     .tree-children {
       display: none;
-      overflow: hidden;
     }
     .tree-children.expanded {
       display: block;
-      animation: treeChildrenFadeIn 0.18s ease-out;
-    }
-    @keyframes treeChildrenFadeIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
     }
     .tree-chunk {
       padding: 5px 10px 5px 32px;
@@ -836,8 +830,8 @@ APP_HTML = r"""<!doctype html>
       <div class="sidebar-sort-row">
         <label for="sidebar-sort-select" class="sidebar-sort-label">Sắp xếp:</label>
         <select id="sidebar-sort-select" class="sidebar-sort-select" title="Cách sắp xếp thư mục User">
-          <option value="pending-desc">⏳ Chưa duyệt lên đầu</option>
           <option value="default">🔢 Thứ tự mặc định</option>
+          <option value="pending-desc">⏳ Chưa duyệt lên đầu</option>
           <option value="progress-asc">📊 Tiến độ thấp nhất</option>
           <option value="duration-desc">⏱️ Thời lượng audio nhiều nhất</option>
           <option value="verified-desc">✅ Đã duyệt nhiều nhất</option>
@@ -972,8 +966,9 @@ let syncTimer = null;
 let activeScope = { type: 'all', userId: null };
 let verificationFilter = 'all'; // 'all' | 'unverified' | 'verified' | 'mine'
 let expandedTreeKeys = new Set();
+let userManuallyCollapsed = new Set();
 let searchQuery = '';
-let sidebarSortMode = localStorage.getItem('asr_sidebar_sort') || 'pending-desc';
+let sidebarSortMode = localStorage.getItem('asr_sidebar_sort') || 'default';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -1373,8 +1368,8 @@ function renderSidebar(shouldAutoScroll = false) {
 
     matchedUsersCount++;
 
-    // Auto expand on search or when contains active sample
-    const isExpanded = q ? true : (expandedTreeKeys.has(userKey) || isCurrentUser);
+    // Auto expand on search or if expanded in expandedTreeKeys
+    const isExpanded = q ? true : expandedTreeKeys.has(userKey);
     const isAllDone = (userData.verifiedSamples === userData.samples && userData.samples > 0);
     const badgeText = `${userData.verifiedSamples}/${userData.samples}`;
 
@@ -1441,6 +1436,9 @@ function renderSidebar(shouldAutoScroll = false) {
 
   container.innerHTML = html;
   container.scrollTop = prevScrollTop;
+  requestAnimationFrame(() => {
+    if (container) container.scrollTop = prevScrollTop;
+  });
 
   // Attach click handlers
   container.querySelectorAll('.tree-item').forEach(el => {
@@ -1463,13 +1461,17 @@ function renderSidebar(shouldAutoScroll = false) {
         const caretEl = el.querySelector('.tree-caret');
         const iconEl = el.querySelector('.tree-icon');
 
-        if (expandedTreeKeys.has(userKey)) {
+        const isCurrentlyExpanded = childrenEl ? childrenEl.classList.contains('expanded') : expandedTreeKeys.has(userKey);
+
+        if (isCurrentlyExpanded) {
           expandedTreeKeys.delete(userKey);
+          userManuallyCollapsed.add(userKey);
           if (childrenEl) childrenEl.classList.remove('expanded');
           if (caretEl) caretEl.classList.remove('expanded');
           if (iconEl) iconEl.textContent = '📁';
         } else {
           expandedTreeKeys.add(userKey);
+          userManuallyCollapsed.delete(userKey);
           if (childrenEl) childrenEl.classList.add('expanded');
           if (caretEl) caretEl.classList.add('expanded');
           if (iconEl) iconEl.textContent = '📂';
@@ -1524,6 +1526,7 @@ function locateActiveChunk() {
   if (!row) return;
 
   const userKey = `user_${row.user_id}`;
+  userManuallyCollapsed.delete(userKey);
   if (!expandedTreeKeys.has(userKey)) {
     expandedTreeKeys.add(userKey);
     renderSidebar(false);
@@ -1663,9 +1666,19 @@ async function syncRealtime() {
       fetch('/api/claims'),
       fetch('/api/rows')
     ]);
+    let claimsChanged = false;
+    let rowsChanged = false;
+
     if (claimsRes.ok) {
-      activeClaims = await claimsRes.json();
+      const newClaims = await claimsRes.json();
+      const oldKeys = Object.keys(activeClaims);
+      const newKeys = Object.keys(newClaims);
+      if (oldKeys.length !== newKeys.length || newKeys.some(k => !activeClaims[k] || activeClaims[k].user !== newClaims[k].user)) {
+        activeClaims = newClaims;
+        claimsChanged = true;
+      }
     }
+
     if (rowsRes.ok) {
       const serverRows = await rowsRes.json();
       const actualIdx = (scopedIndices.length && scopedIndex < scopedIndices.length) ? scopedIndices[scopedIndex] : -1;
@@ -1673,17 +1686,29 @@ async function syncRealtime() {
       serverRows.forEach(sr => {
         const local = allRows[sr.row_index];
         if (local) {
-          local.is_verified = (sr.is_verified === true || sr.is_verified === 'True' || sr.is_verified === 'true' || sr.is_verified === '1');
-          local.verified_by = sr.verified_by || '';
+          const newVer = (sr.is_verified === true || sr.is_verified === 'True' || sr.is_verified === 'true' || sr.is_verified === '1');
+          const newBy = (sr.verified_by || '').trim();
+          if (local.is_verified !== newVer || local.verified_by !== newBy) {
+            rowsChanged = true;
+            local.is_verified = newVer;
+            local.verified_by = newBy;
+          }
           if (local.row_index !== actualIdx || !dirty) {
-            local.text = sr.text;
+            if (local.text !== sr.text) {
+              rowsChanged = true;
+              local.text = sr.text;
+            }
           }
         }
       });
     }
 
-    renderSidebar(false);
-    updateStatsDashboard();
+    // ONLY re-render sidebar if verification or claims actually changed
+    if (claimsChanged || rowsChanged) {
+      renderSidebar(false);
+      updateStatsDashboard();
+    }
+
     if (scopedIndices.length && scopedIndex < scopedIndices.length) {
       const actualIdx = scopedIndices[scopedIndex];
       updateClaimBanner(allRows[actualIdx].row_index);
@@ -1759,6 +1784,14 @@ async function load() {
 async function render() {
   updateScopedIndices();
   updateScopeUI();
+
+  if (scopedIndices.length && scopedIndex < scopedIndices.length) {
+    const curUserId = allRows[scopedIndices[scopedIndex]]?.user_id;
+    if (curUserId && !userManuallyCollapsed.has('user_' + curUserId)) {
+      expandedTreeKeys.add('user_' + curUserId);
+    }
+  }
+
   renderSidebar(true);
 
   if (!scopedIndices.length) {
@@ -2055,11 +2088,14 @@ $('#btn-open-sidebar').onclick = () => toggleSidebar(false);
 // Explorer Toolbar actions
 $('#btn-locate-active').onclick = () => locateActiveChunk();
 $('#btn-expand-all').onclick = () => {
+  userManuallyCollapsed.clear();
   const usersMap = getUsersMap();
   usersMap.forEach((_, u) => expandedTreeKeys.add('user_' + u));
   renderSidebar(false);
 };
 $('#btn-collapse-all').onclick = () => {
+  const usersMap = getUsersMap();
+  usersMap.forEach((_, u) => userManuallyCollapsed.add('user_' + u));
   expandedTreeKeys.clear();
   renderSidebar(false);
 };
