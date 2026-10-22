@@ -18,6 +18,7 @@ cs_dataset/val/
 cs_dataset/test/
 cs_dataset/metadata.csv
 cs_dataset/seg_temp/
+cs_dataset/backups/
 *.zip
 
 link/*

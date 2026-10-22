@@ -4,6 +4,9 @@ import uuid
 import csv
 import argparse
 import re
+import shutil
+import time
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Set
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -30,6 +33,9 @@ class DatasetBuilderPipeline:
         meta_file_for_rooms: Optional[str] = None,
         num_users: Optional[int] = None,
         users: Optional[str] = None,
+        resume: bool = True,
+        force: bool = False,
+        cleanup_temp: bool = True,
     ):
         self.data_type = data_type
         self.speaker_id = speaker_id
@@ -40,6 +46,9 @@ class DatasetBuilderPipeline:
         )
         self.num_users = num_users
         self.users = users
+        self.resume = resume
+        self.force = force
+        self.cleanup_temp = cleanup_temp
 
         # Load directory paths and configurations from .env
         self.input_dir = os.getenv("INPUT_DIR", "input")
@@ -55,11 +64,54 @@ class DatasetBuilderPipeline:
         os.makedirs(self.train_dir, exist_ok=True)
         os.makedirs(self.output_dir, exist_ok=True)
 
+        # Auto-backup existing metadata.csv to protect previous reviews before starting
+        self._backup_metadata_file()
+
         # Initialize metadata CSV file with headers if not present or empty
         self._init_metadata_file()
 
+        # Load already processed source file basenames from metadata.csv
+        self.processed_file_basenames = self._load_processed_basenames()
+
         # Initialize ASR model
         self.asr = FasterWhisperASR()
+
+    def _backup_metadata_file(self):
+        """Creates a timestamped backup of metadata.csv to guarantee no manual review data is lost."""
+        if os.path.exists(self.metadata_file) and os.path.getsize(self.metadata_file) > 0:
+            backup_dir = os.path.join(self.output_dir, "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = os.path.join(backup_dir, f"metadata_backup_{timestamp}.csv")
+            try:
+                shutil.copy2(self.metadata_file, backup_path)
+                print(f"[Backup] Safe backup of metadata.csv created at '{backup_path}'.")
+            except Exception as e:
+                print(f"[Warning] Could not create backup of metadata.csv: {e}")
+
+    def _load_processed_basenames(self) -> Set[str]:
+        """Reads existing metadata.csv and returns the set of input file basenames already processed."""
+        if not os.path.exists(self.metadata_file) or os.path.getsize(self.metadata_file) == 0:
+            return set()
+
+        processed = set()
+        try:
+            with open(self.metadata_file, mode="r", encoding="utf-8-sig", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    audio_rel = row.get("audio_path", "").strip()
+                    if not audio_rel:
+                        continue
+                    chunk_filename = os.path.basename(audio_rel)
+                    source_base = chunk_filename.rsplit("_", 1)[0]
+                    if source_base:
+                        processed.add(source_base)
+        except Exception as e:
+            print(f"[Warning] Could not inspect existing metadata.csv for processed files: {e}")
+
+        if processed:
+            print(f"[Pipeline] Found {len(processed)} unique audio file(s) already processed in '{self.metadata_file}'.")
+        return processed
 
     def _init_metadata_file(self):
         """Creates the metadata.csv file with headers if it does not exist or is empty."""
@@ -70,19 +122,28 @@ class DatasetBuilderPipeline:
                 writer.writerow(["id", "audio_path", "text", "duration", "type", "speaker_id", "is_verified", "verified_by"])
 
     def _append_metadata_record(self, record: Dict[str, Any]):
-        """Appends a new sample record to the metadata.csv file."""
-        with open(self.metadata_file, mode="a", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
-            writer.writerow([
-                record["id"],
-                record["audio_path"],
-                record["text"],
-                f"{record['duration']:.2f}",
-                record["type"],
-                record["speaker_id"],
-                record.get("is_verified", False),
-                record.get("verified_by", ""),
-            ])
+        """Appends a new sample record to the metadata.csv file safely with retry logic."""
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                with open(self.metadata_file, mode="a", encoding="utf-8", newline="") as f:
+                    writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+                    writer.writerow([
+                        record["id"],
+                        record["audio_path"],
+                        record["text"],
+                        f"{record['duration']:.2f}",
+                        record["type"],
+                        record["speaker_id"],
+                        record.get("is_verified", False),
+                        record.get("verified_by", ""),
+                    ])
+                break
+            except (PermissionError, OSError) as e:
+                if attempt < max_retries - 1:
+                    time.sleep(0.1)
+                else:
+                    raise e
 
     def _resolve_speaker_id(self, file_path: str) -> str:
         """Resolves the speaker_id either from user CLI or auto-detected from folder or filename."""
@@ -227,6 +288,19 @@ class DatasetBuilderPipeline:
             self._append_metadata_record(record)
             print(f"   [+] {rel_audio_path} ({duration:.2f}s): \"{transcribed_text}\"")
 
+        # Cleanup temporary intermediate files in seg_temp for this file to save disk space
+        if self.cleanup_temp:
+            try:
+                if os.path.isfile(std_wav_path):
+                    os.remove(std_wav_path)
+                for p in raw_seg_paths:
+                    if os.path.isfile(p):
+                        os.remove(p)
+            except OSError:
+                pass
+
+        self.processed_file_basenames.add(file_basename)
+
     def run(self):
         """Scans the input directory and runs the pipeline across all audio files."""
         supported_exts = ("*.wav", "*.mp3", "*.m4a", "*.flac", "*.ogg", "*.aac")
@@ -262,8 +336,25 @@ class DatasetBuilderPipeline:
             audio_files = filtered_files
             print(f"[Pipeline] Filtered to {len(audio_files)} audio file(s) across {len(target_users)} selected user(s).")
 
+        # Filter out already processed files in resume mode (skip existing without re-transcribing)
+        if self.resume and not self.force:
+            unprocessed = []
+            skipped_count = 0
+            for f in audio_files:
+                f_base = os.path.splitext(os.path.basename(f))[0]
+                if f_base in self.processed_file_basenames:
+                    skipped_count += 1
+                else:
+                    unprocessed.append(f)
+
+            if skipped_count > 0:
+                print(f"[Pipeline] [Resume] {skipped_count} file(s) already processed and will be SKIPPED (protecting existing reviews).")
+                print(f"[Pipeline] Remaining file(s) to process: {len(unprocessed)} / {len(audio_files)}.")
+
+            audio_files = unprocessed
+
         if not audio_files:
-            print(f"[Info] No audio files matching the selected criteria in '{self.input_dir}'.")
+            print(f"[Info] All audio files matching the criteria have already been processed into '{self.metadata_file}'. Nothing new to do!")
             return
 
         print(f"Found {len(audio_files)} audio file(s) to process. Starting pipeline...")
@@ -323,6 +414,21 @@ def parse_args():
         type=str,
         default="link/tracks_2026-10-12_2026-10-16.csv",
         help="Path to CSV file containing room_id list (default: 'link/tracks_2026-10-12_2026-10-16.csv')",
+    )
+    parser.add_argument(
+        "--no-resume",
+        "--force",
+        dest="force",
+        action="store_true",
+        default=False,
+        help="Force reprocessing of all files even if already present in metadata.csv (default: False)",
+    )
+    parser.add_argument(
+        "--keep-temp",
+        dest="keep_temp",
+        action="store_true",
+        default=False,
+        help="Keep intermediate raw segment files in seg_temp/ instead of cleaning up after each file (default: False)",
     )
     parser.add_argument(
         "--reorganize-dataset",
@@ -424,6 +530,8 @@ def main():
         meta_file_for_rooms=args.meta,
         num_users=args.num_users,
         users=args.users,
+        force=args.force,
+        cleanup_temp=not args.keep_temp,
     )
     pipeline.run()
 
