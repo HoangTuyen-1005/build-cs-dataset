@@ -6,6 +6,19 @@ to satisfy Hugging Face Spaces Gradio SDK requirements.
 
 from __future__ import annotations
 
+# Import spaces at the VERY TOP of the file (required by Hugging Face ZeroGPU)
+try:
+    import spaces
+    import torch
+
+    @spaces.GPU
+    def _gpu_worker(n: float = 0.0) -> str:
+        t = torch.zeros(1).cuda()
+        return f"GPU Ready: {t.device}"
+except Exception:
+    def _gpu_worker(n: float = 0.0) -> str:
+        return "CPU Ready"
+
 import csv
 import json
 import os
@@ -274,25 +287,12 @@ async def export_csv():
 
 
 # 4. Mount Gradio interface to satisfy Hugging Face Spaces Gradio SDK & ZeroGPU scanner
-try:
-    import spaces
-    import torch
+with gr.Blocks(title="ASR Transcript Reviewer Backend") as demo:
+    n_in = gr.Number(value=0, visible=False)
+    t_out = gr.Textbox(visible=False)
+    btn = gr.Button("GPU Check", visible=False)
+    btn.click(fn=_gpu_worker, inputs=n_in, outputs=t_out)
 
-    @spaces.GPU
-    def _gpu_worker(n: float = 0.0) -> str:
-        # Use torch to prevent Gradio from transpiling this to JavaScript
-        t = torch.zeros(1).cuda()
-        return f"GPU Ready: {t.device}"
-except Exception:
-    def _gpu_worker(n: float = 0.0) -> str:
-        return "CPU Ready"
-
-demo = gr.Interface(
-    fn=_gpu_worker,
-    inputs=gr.Number(value=0, visible=False),
-    outputs=gr.Textbox(visible=False),
-    title="ASR Transcript Reviewer Backend",
-)
 app = gr.mount_gradio_app(app, demo, path="/gradio")
 
 
