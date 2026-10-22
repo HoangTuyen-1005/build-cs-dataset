@@ -431,6 +431,99 @@ APP_HTML = r"""<!doctype html>
       border-radius: 6px;
     }
 
+    /* Stats Dashboard */
+    .stats-dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+      gap: 12px;
+      margin: 4px 0 12px;
+    }
+    .stat-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      transition: all 0.15s ease;
+      cursor: default;
+    }
+    .stat-card:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06);
+    }
+    .stat-icon {
+      font-size: 22px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: #f1f5f9;
+      flex-shrink: 0;
+    }
+    .stat-card.primary .stat-icon {
+      background: #eff6ff;
+      color: #2563eb;
+    }
+    .stat-card.mine .stat-icon {
+      background: #fdf4ff;
+      color: #c026d3;
+    }
+    .stat-card.success .stat-icon {
+      background: #f0fdf4;
+      color: #16a34a;
+    }
+    .stat-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .stat-label {
+      font-size: 0.74rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #64748b;
+      margin-bottom: 2px;
+    }
+    .stat-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .stat-sub {
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: #94a3b8;
+    }
+    .stat-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: #f1f5f9;
+      color: #475569;
+      flex-shrink: 0;
+    }
+    .stat-badge.primary {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+    .stat-badge.mine {
+      background: #f5d0fe;
+      color: #a21caf;
+    }
+    .stat-badge.success {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
     /* Live Claim / Lock Alert Banner */
     .claim-banner {
       display: flex;
@@ -592,6 +685,36 @@ APP_HTML = r"""<!doctype html>
         <strong id="counter" class="counter-badge">0 / 0</strong>
       </header>
 
+      <!-- Stats Dashboard: Duration & Samples -->
+      <div class="stats-dashboard" id="stats-dashboard">
+        <div class="stat-card primary" id="card-total-duration" title="Tổng thời lượng đã kiểm duyệt trên toàn bộ dataset">
+          <div class="stat-icon">⏱️</div>
+          <div class="stat-content">
+            <div class="stat-label">Thời lượng đã duyệt</div>
+            <div class="stat-value" id="stat-verified-duration">0s <span class="stat-sub">/ 0s</span></div>
+          </div>
+          <div class="stat-badge primary" id="stat-duration-pct">0%</div>
+        </div>
+
+        <div class="stat-card mine" id="card-my-duration" title="Thời lượng do chính bạn đã duyệt (dựa theo Người duyệt)">
+          <div class="stat-icon">👤</div>
+          <div class="stat-content">
+            <div class="stat-label">Của bạn đã duyệt</div>
+            <div class="stat-value" id="stat-my-duration">0s</div>
+          </div>
+          <div class="stat-badge mine" id="stat-my-count">0 mẫu</div>
+        </div>
+
+        <div class="stat-card success" id="card-total-samples" title="Tiến độ số lượng mẫu audio đã kiểm duyệt">
+          <div class="stat-icon">✅</div>
+          <div class="stat-content">
+            <div class="stat-label">Số mẫu đã duyệt</div>
+            <div class="stat-value" id="stat-verified-samples">0 <span class="stat-sub">/ 0</span></div>
+          </div>
+          <div class="stat-badge success" id="stat-samples-pct">0%</div>
+        </div>
+      </div>
+
       <div class="scope-banner" id="scope-banner">
         <span class="scope-text" id="scope-path">📍 Đang xem: <strong>Tất cả dữ liệu</strong></span>
         <button id="reset-filter" class="btn-reset-filter" style="display:none;">✕ Xem tất cả</button>
@@ -677,6 +800,101 @@ function getReviewerName() {
   return name;
 }
 
+// Duration formatting helpers
+function formatDuration(seconds) {
+  const s = Math.round(Number(seconds) || 0);
+  if (s <= 0) return '0s';
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${secs.toString().padStart(2, '0')}s`;
+  }
+  return `${secs}s`;
+}
+
+function formatDurationHuman(seconds) {
+  const s = Math.round(Number(seconds) || 0);
+  if (s <= 0) return '0 giây';
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  const parts = [];
+  if (hours > 0) parts.push(`${hours} giờ`);
+  if (minutes > 0) parts.push(`${minutes} phút`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs} giây`);
+  return parts.join(' ');
+}
+
+function updateStatsDashboard() {
+  const myName = getReviewerName().toLowerCase();
+  let totalDur = 0;
+  let verifiedDur = 0;
+  let myDur = 0;
+  let totalCount = allRows.length;
+  let verifiedCount = 0;
+  let myCount = 0;
+
+  for (let i = 0; i < totalCount; i++) {
+    const r = allRows[i];
+    const d = parseFloat(r.duration) || 0;
+    totalDur += d;
+    if (r.is_verified) {
+      verifiedDur += d;
+      verifiedCount++;
+      if ((r.verified_by || '').trim().toLowerCase() === myName) {
+        myDur += d;
+        myCount++;
+      }
+    }
+  }
+
+  const durPct = totalDur > 0 ? ((verifiedDur / totalDur) * 100).toFixed(1) : '0.0';
+  const samplesPct = totalCount > 0 ? ((verifiedCount / totalCount) * 100).toFixed(1) : '0.0';
+
+  const statVerDur = $('#stat-verified-duration');
+  if (statVerDur) {
+    statVerDur.innerHTML = `${formatDuration(verifiedDur)} <span class="stat-sub">/ ${formatDuration(totalDur)}</span>`;
+  }
+  const statDurPct = $('#stat-duration-pct');
+  if (statDurPct) {
+    statDurPct.textContent = `${Math.round(parseFloat(durPct))}%`;
+  }
+  const cardTotalDur = $('#card-total-duration');
+  if (cardTotalDur) {
+    cardTotalDur.title = `Đã kiểm duyệt: ${formatDurationHuman(verifiedDur)} (${verifiedDur.toFixed(1)}s)\nTổng dataset: ${formatDurationHuman(totalDur)} (${totalDur.toFixed(1)}s)\nTiến độ thời lượng: ${durPct}%`;
+  }
+
+  const statMyDur = $('#stat-my-duration');
+  if (statMyDur) {
+    statMyDur.textContent = formatDuration(myDur);
+  }
+  const statMyCount = $('#stat-my-count');
+  if (statMyCount) {
+    statMyCount.textContent = `${myCount} mẫu`;
+  }
+  const cardMyDur = $('#card-my-duration');
+  if (cardMyDur) {
+    cardMyDur.title = `Người duyệt: ${getReviewerName()}\nThời lượng bạn đã duyệt: ${formatDurationHuman(myDur)} (${myDur.toFixed(1)}s)\nSố mẫu bạn đã duyệt: ${myCount} mẫu`;
+  }
+
+  const statVerSamples = $('#stat-verified-samples');
+  if (statVerSamples) {
+    statVerSamples.innerHTML = `${verifiedCount} <span class="stat-sub">/ ${totalCount}</span>`;
+  }
+  const statSamplesPct = $('#stat-samples-pct');
+  if (statSamplesPct) {
+    statSamplesPct.textContent = `${Math.round(parseFloat(samplesPct))}%`;
+  }
+  const cardTotalSamples = $('#card-total-samples');
+  if (cardTotalSamples) {
+    cardTotalSamples.title = `Đã kiểm duyệt: ${verifiedCount} / ${totalCount} mẫu (${samplesPct}%)`;
+  }
+}
+
 function seekBy(seconds) {
   const audio = $('#audio');
   const duration = Number.isFinite(audio.duration) ? audio.duration : Infinity;
@@ -745,17 +963,32 @@ function updateScopeUI() {
   else if (verificationFilter === 'verified') filterTag = ' • <em style="color:#15803d;">[Đã duyệt]</em>';
   else if (verificationFilter === 'mine') filterTag = ` • <em style="color:#2563eb;">[Của tôi: ${getReviewerName()}]</em>`;
 
+  let scopeDurInfo = '';
+  if (count > 0) {
+    let scTotalDur = 0;
+    let scVerDur = 0;
+    for (let idx of scopedIndices) {
+      const d = parseFloat(allRows[idx]?.duration) || 0;
+      scTotalDur += d;
+      if (allRows[idx]?.is_verified) scVerDur += d;
+    }
+    const scPct = scTotalDur > 0 ? Math.round((scVerDur / scTotalDur) * 100) : 0;
+    scopeDurInfo = ` &nbsp;•&nbsp; ⏱️ <strong>${formatDuration(scVerDur)}</strong> / ${formatDuration(scTotalDur)} (${scPct}%)`;
+  }
+
   if (activeScope.type === 'user') {
-    scopePath.innerHTML = `📍 Phạm vi User: <strong>${activeScope.userId}</strong>${filterTag}`;
+    scopePath.innerHTML = `📍 Phạm vi User: <strong>${activeScope.userId}</strong>${scopeDurInfo}${filterTag}`;
     resetBtn.style.display = 'inline-block';
   } else {
-    scopePath.innerHTML = `📍 Phạm vi: <strong>Tất cả dữ liệu</strong>${filterTag}`;
+    scopePath.innerHTML = `📍 Phạm vi: <strong>Tất cả dữ liệu</strong>${scopeDurInfo}${filterTag}`;
     resetBtn.style.display = (verificationFilter !== 'all') ? 'inline-block' : 'none';
   }
 
   $('#counter').textContent = count ? `${scopedIndex + 1} / ${count}` : '0 / 0';
   $('#prev').disabled = count <= 1 || scopedIndex === 0;
   $('#next').disabled = count <= 1 || scopedIndex === count - 1;
+
+  updateStatsDashboard();
 }
 
 // Build user map with verification counts
@@ -789,10 +1022,14 @@ function renderSidebar() {
   const myVerified = allRows.filter(r => r.is_verified && (r.verified_by || '').trim().toLowerCase() === myName).length;
   const pct = allRows.length ? Math.round((totalVerified / allRows.length) * 100) : 0;
 
-  // Sidebar stats & progress bar
-  $('#sidebar-stats').innerHTML = `<span>${usersMap.size} user • ${allRows.length} mẫu • <strong style="color:#4ade80;">${totalVerified} đã duyệt (${pct}%)</strong></span>`;
+  const totalDuration = allRows.reduce((acc, r) => acc + (parseFloat(r.duration) || 0), 0);
+  const verifiedDuration = allRows.reduce((acc, r) => acc + (r.is_verified ? (parseFloat(r.duration) || 0) : 0), 0);
+  const durPct = totalDuration > 0 ? Math.round((verifiedDuration / totalDuration) * 100) : 0;
+
+  // Sidebar stats & progress bar (showing both count and audio duration)
+  $('#sidebar-stats').innerHTML = `<span>${usersMap.size} user • ${allRows.length} mẫu • ⏱️ <strong style="color:#4ade80;">${formatDuration(verifiedDuration)}</strong> / ${formatDuration(totalDuration)} (${durPct}%)</span>`;
   const fill = $('#sidebar-progress-fill');
-  if (fill) fill.style.width = pct + '%';
+  if (fill) fill.style.width = durPct + '%';
 
   // Update filter tab texts and active classes
   const tabAll = $('#tab-vfilter-all');
@@ -855,12 +1092,20 @@ function renderSidebar() {
     const isAllDone = (userData.verifiedSamples === userData.samples && userData.samples > 0);
     const badgeText = `${userData.verifiedSamples}/${userData.samples}`;
 
+    let userTotalDur = 0;
+    let userVerDur = 0;
+    userData.indices.forEach(i => {
+      const d = parseFloat(allRows[i].duration) || 0;
+      userTotalDur += d;
+      if (allRows[i].is_verified) userVerDur += d;
+    });
+
     html += `
       <div class="tree-item tree-user ${isUserActive ? 'active' : ''}" data-type="user" data-user="${userId}">
         <span class="tree-caret ${isExpanded ? 'expanded' : ''}" data-toggle-key="${userKey}">▶</span>
         <span class="tree-icon">📁</span>
         <span class="tree-label" title="User ID: ${userId}">${userId}</span>
-        <span class="tree-badge ${isAllDone ? 'badge-all-done' : ''}" title="${userData.verifiedSamples} / ${userData.samples} mẫu đã duyệt">${badgeText}</span>
+        <span class="tree-badge ${isAllDone ? 'badge-all-done' : ''}" title="${userData.verifiedSamples}/${userData.samples} mẫu (${formatDuration(userVerDur)} / ${formatDuration(userTotalDur)})">${badgeText}</span>
       </div>
       <div class="tree-children ${isExpanded ? 'expanded' : ''}" id="children_${userKey}">
     `;
@@ -1092,6 +1337,7 @@ async function syncRealtime() {
     }
 
     renderSidebar();
+    updateStatsDashboard();
     if (scopedIndices.length && scopedIndex < scopedIndices.length) {
       const actualIdx = scopedIndices[scopedIndex];
       updateClaimBanner(allRows[actualIdx].row_index);
@@ -1377,6 +1623,7 @@ $('#reviewer-name').addEventListener('input', e => {
   if (name) {
     try { localStorage.setItem('reviewer_name', name); } catch (err) {}
     renderSidebar();
+    updateStatsDashboard();
   }
 });
 $('#reviewer-name').addEventListener('change', e => {
