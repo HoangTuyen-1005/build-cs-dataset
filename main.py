@@ -28,6 +28,8 @@ class DatasetBuilderPipeline:
         num_rooms: Optional[int] = None,
         rooms: Optional[str] = None,
         meta_file_for_rooms: Optional[str] = None,
+        num_users: Optional[int] = None,
+        users: Optional[str] = None,
     ):
         self.data_type = data_type
         self.speaker_id = speaker_id
@@ -36,6 +38,8 @@ class DatasetBuilderPipeline:
         self.meta_file_for_rooms = meta_file_for_rooms or os.getenv(
             "ROOM_META_FILE", "link/tracks_2026-10-12_2026-10-16.csv"
         )
+        self.num_users = num_users
+        self.users = users
 
         # Load directory paths and configurations from .env
         self.input_dir = os.getenv("INPUT_DIR", "input")
@@ -141,6 +145,23 @@ class DatasetBuilderPipeline:
 
         return None
 
+    def _get_target_users(self) -> Optional[Set[str]]:
+        """Resolves the set of user_ids to filter by, based on --users or --num_users."""
+        if self.users:
+            users_list = [u.strip() for u in self.users.split(",") if u.strip()]
+            return set(users_list)
+
+        if self.num_users is not None and self.num_users > 0:
+            user_dirs = sorted([
+                d for d in os.listdir(self.input_dir)
+                if os.path.isdir(os.path.join(self.input_dir, d)) and not d.startswith(".")
+            ])
+            selected = user_dirs[: self.num_users]
+            print(f"[Pipeline] Selected first {len(selected)} user(s): {selected}")
+            return set(selected)
+
+        return None
+
     def process_single_file(self, file_path: str):
         """
         Processes a single input audio file through the full pipeline.
@@ -230,8 +251,19 @@ class DatasetBuilderPipeline:
             audio_files = filtered_files
             print(f"[Pipeline] Filtered to {len(audio_files)} audio file(s) across {len(target_rooms)} selected room(s).")
 
+        # Filter audio files by target users if specified
+        target_users = self._get_target_users()
+        if target_users:
+            filtered_files = []
+            for f in audio_files:
+                uid = self._resolve_speaker_id(f)
+                if uid in target_users:
+                    filtered_files.append(f)
+            audio_files = filtered_files
+            print(f"[Pipeline] Filtered to {len(audio_files)} audio file(s) across {len(target_users)} selected user(s).")
+
         if not audio_files:
-            print(f"[Info] No audio files matching the selected room(s) in '{self.input_dir}'.")
+            print(f"[Info] No audio files matching the selected criteria in '{self.input_dir}'.")
             return
 
         print(f"Found {len(audio_files)} audio file(s) to process. Starting pipeline...")
@@ -272,6 +304,19 @@ def parse_args():
         type=str,
         default=None,
         help="Comma-separated list of specific room_ids to process",
+    )
+    parser.add_argument(
+        "--num_users",
+        "--num-users",
+        type=int,
+        default=None,
+        help="Number of user_id folders to process from input/ (e.g. 5, 10)",
+    )
+    parser.add_argument(
+        "--users",
+        type=str,
+        default=None,
+        help="Comma-separated list of specific user_ids to process",
     )
     parser.add_argument(
         "--meta",
@@ -377,6 +422,8 @@ def main():
         num_rooms=args.num_rooms,
         rooms=args.rooms,
         meta_file_for_rooms=args.meta,
+        num_users=args.num_users,
+        users=args.users,
     )
     pipeline.run()
 

@@ -103,17 +103,22 @@ Nếu bạn đã có sẵn file ở cấp thư mục cũ, script sẽ tự độ
 ### Bước 2: Chạy Pipeline Build Dataset
 Sử dụng lệnh `python main.py` với các tùy chọn:
 - `--type` (Bắt buộc): Loại dữ liệu (ví dụ: `cs` cho Code-Switching, `mono_vi`...).
-- `--num_rooms` (Khuyến nghị khi test): Số phòng muốn chọn từ file CSV để build dataset (ví dụ: `5`, `10`...).
+- `--num_users` (Khuyến nghị khi test): Số lượng thư mục `user_id` muốn xử lý trước từ `input/` (ví dụ: `5`, `10`...).
+- `--users`: Chỉ định cụ thể danh sách `user_id` cách nhau bởi dấu phẩy.
+- `--num_rooms`: Số phòng muốn chọn từ file CSV để build dataset.
 - `--rooms`: Chỉ định cụ thể danh sách `room_id` cách nhau bởi dấu phẩy.
-- `--speaker_id`: ID người nói (mặc định là `auto` - tự động trích xuất `participant_id` từ tên file; hoặc truyền ID cố định như `SPK01`).
+- `--speaker_id`: ID người nói (mặc định là `auto` - tự động trích xuất `user_id` từ folder cha).
 
 **Ví dụ:**
 ```powershell
-# Build dataset cho 5 phòng đầu tiên từ file CSV:
-python main.py --type "cs" --num_rooms 5
+# Chạy STT cho 5 user đầu tiên trong input/:
+python main.py --type "cs" --num_users 5
 
-# Build dataset cho 10 phòng:
-python main.py --type "cs" --num_rooms 10
+# Chạy STT cho 10 user:
+python main.py --type "cs" --num_users 10
+
+# Chạy STT cho các user cụ thể:
+python main.py --type "cs" --users "1779484387973271552,1779509763680243712"
 
 # Build cho toàn bộ các file trong thư mục input:
 python main.py --type "cs"
